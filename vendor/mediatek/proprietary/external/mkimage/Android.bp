@@ -1,6 +1,0 @@
-cc_binary_host {
-    name: "mtk_mkimage",
-    proprietary: true,
-    owner: "mtk",
-    srcs: ["mkimage.c"],
-}
