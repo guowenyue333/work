@@ -1,6 +1,0 @@
-# This file registers the release packages of a project.
-#
-# All release packages are assembled in one line, separated with one space
-# character. Empty lines and comments (lines starting with #) are ignored.
-
-basic kernel-4.19 platform_mt6761 modem product_sp
