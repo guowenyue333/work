@@ -7,15 +7,31 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/gpio.h>
 
 #include "gpio_key.h"
 
-MODULE_LICENSE("BSD/GPL");
 
-static int gpio_key_init(void) //初始化
+
+
+/*ID匹配*/
+static const struct platform_device_id gpio_key_id_table[] = {
+    { "gpio_keys", 0 },  // 名称匹配
+    { }
+};
+MODULE_DEVICE_TABLE(platform, gpio_key_id_table);
+
+
+/*设备树匹配*/
+static const struct of_device_id gpio_key_of_match[] = {
+    { .compatible = "agn.gpio_key" },
+    {}
+};
+MODULE_DEVICE_TABLE(of, gpio_key_of_match);
+
+static int gpio_key_probe(struct platform_device *pdev)
 {   
     int i,ret = 0;
-    struct platform_device *pdev;
     struct device_node *np;
     struct gpio_key_data *data;
     np = of_find_compatible_node(NULL, NULL, "agn.gpio_key");//获取设备树节点
@@ -76,26 +92,44 @@ static irqreturn_t gpio_key_isr(int irq, void *dev_id)
     }
     return IRQ_HANDLED; // 中断已被处理
 }
-static void gpio_key_exit(void)
+static int gpio_key_remove(struct platform_device *pdev)
 {   
-    struct platform_device *pdev;
     struct gpio_key_data *data;
-    pdev = container_of(&(struct device){.init_name = DRV_NAME},
-                        struct platform_device, dev);   //查找设备地址
-    if(pdev) {
-        data = platform_get_drvdata(pdev);
-        if(data && data->input) {
-            input_unregister_device(data->input); //删除注册的输入设备
-            input_free_device(data->input);  //释放输入设备
-        }
+    data = platform_get_drvdata(pdev);
+        /* 检查驱动数据是否存在 */
+    if (!data) {
+        dev_warn(&pdev->dev, "No driver data found\n");
+        return -ENOMEM;
+    }   
+    platform_set_drvdata(pdev, data);
+    if(data && data->input) {
+        input_unregister_device(data->input); //删除注册的输入设备
+        input_free_device(data->input);  //释放输入设备
     }
     for(int i = 0; i < MAX_KEYS; i++) {
-        if(data->irq[i] > 0) devm_free_irq(&pdev->dev,data->irq[i], data);          //释放中断
-        if(gpio_is_valid(data->gpio[i])) devm_gpio_free(&pdev->dev, data->gpio[i]); //释放GPIO
+        if(data->irq[i] > 0) {
+            devm_free_irq(&pdev->dev,data->irq[i], data);          //释放中断
+
+        }
+        if(data->gpio[i]) {
+            devm_gpiod_put(&pdev->dev, data->gpio[i]); //释放GPIO
+            data->gpio[i] = NULL;
+        }
     }
     pr_info("GPIO Key driver removed\n");
+    return 0;
 }
 
+struct platform_driver gpio_key_driver = {
+    .probe = gpio_key_probe,
+    .remove = gpio_key_remove,
+    .id_table = gpio_key_id_table,
+    .driver = {
+        .name = DRV_NAME,
+        .of_match_table = gpio_key_of_match,
+    },
+};
+MODULE_LICENSE("GPL");
+module_platform_driver(gpio_key_driver);
 
-module_init(gpio_key_init);  //模块注册
-module_exit(gpio_key_exit);  //模块卸载
+
